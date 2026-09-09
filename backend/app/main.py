@@ -49,17 +49,18 @@ app.include_router(admin_router, prefix=settings.API_V1_STR)
 def on_startup():
     try:
         from app.database.session import engine, Base, SessionLocal
+        import app.models  # Register all 18+ models & 20 tables with SQLAlchemy metadata
         from app.models.user import User
         Base.metadata.create_all(bind=engine)
         db = SessionLocal()
         try:
             count = db.query(User).count()
             if count == 0:
-                print("[Database] Empty database detected. Auto-seeding initial dataset...")
+                print("[Database] Empty database detected. Auto-seeding complete dataset (111 users, courses, competencies)...")
                 from seed_data import seed_database
                 seed_database()
             else:
-                print(f"[Database] Connected successfully ({count} users found).")
+                print(f"[Database] Connected successfully ({count} users found in database).")
         finally:
             db.close()
     except Exception as e:

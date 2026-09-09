@@ -1,6 +1,11 @@
-from pydantic_settings import BaseSettings
-from typing import List
+from pathlib import Path
 import os
+from typing import List
+from pydantic_settings import BaseSettings
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+DEFAULT_SQLITE_PATH = (BACKEND_DIR / "statsaksham.db").as_posix()
+DEFAULT_DATABASE_URL = f"sqlite:///{DEFAULT_SQLITE_PATH}"
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "StatSaksham"
@@ -12,8 +17,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     
-    # Database (PostgreSQL / Supabase or SQLite portable fallback)
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./statsaksham.db")
+    # Database (PostgreSQL / Supabase or deterministic SQLite portable fallback)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
     
     # Supabase (Optional direct integration)
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")

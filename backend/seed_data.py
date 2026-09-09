@@ -8,6 +8,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app.database.session import SessionLocal, engine, Base
 from app.core.security import get_password_hash
+import app.models  # Register all 18+ models & 20 tables with SQLAlchemy metadata
 from app.models.user import User
 from app.models.department import Department
 from app.models.employee import Employee
@@ -16,7 +17,8 @@ from app.models.assessment import Assessment, AssessmentQuestion, AssessmentResu
 from app.models.course import IGOTCourse, NSSTAProgramme
 from app.models.progress import LearningProgress
 from app.models.recommendation import Recommendation
-from app.models.quiz import QuizDocument, QuizChunk, QuizQuestion
+from app.models.quiz import QuizDocument, QuizChunk, QuizQuestion, QuizAttempt, QuizAnswer
+from app.models.ai_conversation import AIConversation, AIMessage
 from app.services.recommendation_service import RecommendationService
 
 def seed_database():

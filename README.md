@@ -44,25 +44,45 @@
 
 ---
 
-## Quick Start Guide
+## Quick Start Guide (For Team Members & Fresh Clones)
 
-### 1. Backend Setup (FastAPI)
-```powershell
-# Activate virtual environment
-.\.venv\Scripts\Activate.ps1
-
-# (Optional) Seed the database with 110+ employees & 80+ courses
-python backend\seed_data.py
-
-# Start FastAPI server (Port 8000)
-uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+### 1. Clone the Repository
+```bash
+git clone https://github.com/PATIL-SANTHOSH/StatSaksham.git
+cd StatSaksham
 ```
-Swagger Documentation: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
-### 2. Frontend Setup (React + Vite)
+### 2. Backend Setup (FastAPI + Python)
 ```powershell
+# Create virtual environment (if not already created)
+python -m venv .venv
+
+# Activate virtual environment
+# Windows (PowerShell):
+.\.venv\Scripts\Activate.ps1
+# Windows (CMD):
+.\.venv\Scripts\activate.bat
+# Linux / macOS:
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r backend/requirements.txt
+
+# Start FastAPI backend (Auto-seeds database on first launch!)
+.\start_backend.ps1
+# OR manually:
+python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+```
+Swagger API Docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+### 3. Frontend Setup (React + Vite + Tailwind)
+```powershell
+# In a new terminal window:
 cd frontend
+npm install
 npm run dev
+# OR from root directory:
+.\start_frontend.ps1
 ```
 Web Application: [http://localhost:5173](http://localhost:5173)
 

@@ -8,8 +8,14 @@ def normalize_database_url(url: str) -> str:
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     
+    if url.startswith("sqlite"):
+        if "./statsaksham.db" in url or url == "sqlite:///statsaksham.db":
+            from app.core.config import DEFAULT_SQLITE_PATH
+            url = f"sqlite:///{DEFAULT_SQLITE_PATH}"
+        return url
+    
     # Handle unencoded @ or special chars in password
-    if "://" in url and not url.startswith("sqlite"):
+    if "://" in url:
         try:
             prefix, rest = url.split("://", 1)
             if "@" in rest:
