@@ -25,6 +25,8 @@ const QuizGenerator = () => {
   const [uploadTitle, setUploadTitle] = useState('');
   const [competencyTag, setCompetencyTag] = useState('Python for Data Analysis');
   const [uploading, setUploading] = useState(false);
+  const [uploadStage, setUploadStage] = useState('');
+  const [uploadError, setUploadError] = useState('');
   const [uploadedDoc, setUploadedDoc] = useState(null);
   const [userDocs, setUserDocs] = useState([]);
 
@@ -34,6 +36,7 @@ const QuizGenerator = () => {
   const [rawText, setRawText] = useState('');
   const [useManualText, setUseManualText] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState('');
 
   // Active Quiz Runner state
   const [quizQuestions, setQuizQuestions] = useState([]);
@@ -49,6 +52,9 @@ const QuizGenerator = () => {
       try {
         const res = await quizAPI.getDocuments(user.employee_id);
         setUserDocs(res.data);
+        if (res.data.length > 0 && !uploadedDoc) {
+          setUploadedDoc(res.data[0]);
+        }
       } catch (e) {
         console.error('Error fetching documents:', e);
       }
@@ -68,11 +74,14 @@ const QuizGenerator = () => {
   const handleFileUpload = async (e) => {
     e.preventDefault();
     if (!file) {
-      alert('Please select a file to upload.');
+      setUploadError('Please select a PDF, PPTX, DOCX, or TXT file to upload.');
       return;
     }
 
     setUploading(true);
+    setUploadError('');
+    setUploadStage('Uploading & Validating Document...');
+
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -80,11 +89,19 @@ const QuizGenerator = () => {
       formData.append('competency_tag', competencyTag);
       formData.append('title', uploadTitle || file.name);
 
+      setUploadStage('Extracting Text & Slide Contents...');
       const res = await quizAPI.uploadDocument(formData);
+      
+      setUploadStage('Generating Nomic-Embed Vector Embeddings...');
       setUploadedDoc(res.data);
       setUserDocs([res.data, ...userDocs]);
+      setFile(null);
+      setUploadTitle('');
+      setUploadStage('Ready for AI Assessment!');
     } catch (err) {
-      alert('Error uploading document. Ensure file is a valid PDF, PPTX, or TXT.');
+      const errMsg = err.response?.data?.detail || 'Error processing document. Ensure file is a valid text-based PDF, PPTX, DOCX, or TXT.';
+      setUploadError(errMsg);
+      setUploadStage('');
     } finally {
       setUploading(false);
     }
@@ -92,6 +109,7 @@ const QuizGenerator = () => {
 
   const handleGenerateQuiz = async () => {
     setGenerating(true);
+    setGenError('');
     setQuizResult(null);
     setAnswers({});
     setCurrentQIndex(0);
@@ -99,7 +117,7 @@ const QuizGenerator = () => {
 
     try {
       const payload = {
-        document_id: uploadedDoc ? uploadedDoc.id : null,
+        document_id: (!useManualText && uploadedDoc) ? uploadedDoc.id : null,
         competency: competencyTag,
         difficulty: difficulty,
         num_questions: parseInt(numQuestions),
@@ -107,9 +125,13 @@ const QuizGenerator = () => {
       };
 
       const res = await quizAPI.generateQuiz(payload);
+      if (!res.data || res.data.length === 0) {
+        throw new Error('No questions generated. Ensure document has sufficient content.');
+      }
       setQuizQuestions(res.data);
     } catch (err) {
-      alert('Failed to generate AI Quiz. Ensure document has sufficient statistical content.');
+      const errMsg = err.response?.data?.detail || err.message || 'Failed to generate AI Quiz. Ensure document is selected or text is provided.';
+      setGenError(errMsg);
     } finally {
       setGenerating(false);
     }
@@ -160,7 +182,7 @@ const QuizGenerator = () => {
           </div>
 
           <h2 className="text-2xl font-black text-slate-900">{quizResult.competency} Quiz Results</h2>
-          <p className="text-xs text-slate-500">RAG-Generated Evaluation Assessment</p>
+          <p className="text-xs text-slate-500">RAG-Generated Grounded Assessment</p>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-md mx-auto text-left pt-2">
             <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
@@ -178,6 +200,38 @@ const QuizGenerator = () => {
               </span>
             </div>
           </div>
+
+          {/* Feedback Breakdown */}
+          {quizResult.feedback && quizResult.feedback.length > 0 && (
+            <div className="mt-6 text-left space-y-3 pt-4 border-t border-slate-100">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Question Explanations & Sources</h4>
+              {quizResult.feedback.map((item, idx) => (
+                <div key={idx} className={`p-4 rounded-2xl border text-xs space-y-1.5 ${
+                  item.is_correct ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200'
+                }`}>
+                  <div className="flex items-start justify-between font-bold text-slate-900">
+                    <span>Q{idx + 1}: {item.question_text}</span>
+                    <span className={item.is_correct ? 'text-emerald-700 font-black' : 'text-rose-600 font-black'}>
+                      {item.is_correct ? '✓ Correct' : '✗ Incorrect'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-600">
+                    Your Answer: <strong>{item.selected_option}</strong> | Correct: <strong className="text-emerald-700">{item.correct_option}</strong>
+                  </div>
+                  {item.explanation && (
+                    <div className="text-[11px] text-slate-700 bg-white/80 p-2.5 rounded-xl border border-slate-200/60 mt-1">
+                      <strong>Explanation:</strong> {item.explanation}
+                    </div>
+                  )}
+                  {item.source_reference && (
+                    <div className="text-[10px] text-slate-500 font-mono">
+                      📍 {item.source_reference}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="pt-4 flex justify-center space-x-3">
             <button
@@ -201,7 +255,7 @@ const QuizGenerator = () => {
     );
   }
 
-  // View 2: Active Quiz Runner (Matches Middle-Right Reference exactly)
+  // View 2: Active Quiz Runner
   if (quizQuestions.length > 0) {
     const q = quizQuestions[currentQIndex];
     const totalQ = quizQuestions.length;
@@ -212,7 +266,7 @@ const QuizGenerator = () => {
         <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-2xs flex items-center justify-between">
           <div>
             <h2 className="text-base font-extrabold text-slate-900">
-              {competencyTag} - Quiz
+              {competencyTag} - Grounded Quiz
             </h2>
             <div className="text-xs text-slate-500 font-medium mt-0.5">
               Question {currentQIndex + 1} of {totalQ}
@@ -310,14 +364,19 @@ const QuizGenerator = () => {
       <div>
         <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">AI Quiz Generator</h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Upload learning material (PDF, PPTX, TXT) to generate customized MCQs using the RAG pipeline.
+          Upload learning materials (PDF, PPTX, DOCX, TXT) to generate grounded MCQs using the RAG vector pipeline.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         {/* Upload Card */}
         <div className="md:col-span-7 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-2xs space-y-4">
-          <h3 className="font-extrabold text-sm text-slate-900">Upload Learning Material</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-extrabold text-sm text-slate-900">Upload Learning Material</h3>
+            <span className="text-[10px] bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-bold border border-blue-200">
+              PDF • PPTX • DOCX • TXT
+            </span>
+          </div>
 
           <form onSubmit={handleFileUpload} className="space-y-4 text-xs">
             <div className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-2xl p-6 text-center bg-slate-50/60 transition cursor-pointer relative">
@@ -328,6 +387,7 @@ const QuizGenerator = () => {
                   if (e.target.files && e.target.files[0]) {
                     setFile(e.target.files[0]);
                     setUploadTitle(e.target.files[0].name.replace(/\.[^/.]+$/, ''));
+                    setUploadError('');
                   }
                 }}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -337,7 +397,7 @@ const QuizGenerator = () => {
                 {file ? file.name : 'Click or Drag & Drop File Here'}
               </p>
               <p className="text-[11px] text-slate-500 mt-1">
-                Supports PDF, PPTX, TXT up to 25MB
+                Supports text PDF, PowerPoint (PPTX), Word (DOCX), and TXT up to 25MB
               </p>
             </div>
 
@@ -375,7 +435,7 @@ const QuizGenerator = () => {
               className="w-full py-2.5 bg-[#0C1E38] hover:bg-[#081528] disabled:opacity-40 text-white font-bold rounded-xl shadow-xs transition flex items-center justify-center space-x-2"
             >
               {uploading ? (
-                <span>Extracting Text & Vector Chunking...</span>
+                <span>{uploadStage || 'Extracting Text & Vector Chunking...'}</span>
               ) : (
                 <>
                   <UploadCloud className="h-4 w-4" />
@@ -385,10 +445,45 @@ const QuizGenerator = () => {
             </button>
           </form>
 
-          {uploadedDoc && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center space-x-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span><strong>{uploadedDoc.filename}</strong> ingested into {uploadedDoc.chunk_count} vector chunks!</span>
+          {/* Upload Error Alert */}
+          {uploadError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start space-x-2">
+              <XCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>{uploadError}</span>
+            </div>
+          )}
+
+          {/* Upload Success Alert */}
+          {uploadedDoc && !uploadError && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>Active: <strong>{uploadedDoc.filename}</strong> ({uploadedDoc.chunk_count} vector chunks)</span>
+              </div>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-mono px-2 py-0.5 rounded font-bold">
+                {uploadedDoc.file_type}
+              </span>
+            </div>
+          )}
+
+          {/* User's Ingested Documents List */}
+          {userDocs.length > 0 && (
+            <div className="pt-2 border-t border-slate-100 text-xs">
+              <label className="block font-bold text-slate-700 mb-1.5">Or Choose From Ingested Materials ({userDocs.length}):</label>
+              <select
+                value={uploadedDoc ? uploadedDoc.id : ''}
+                onChange={(e) => {
+                  const sel = userDocs.find(d => d.id === parseInt(e.target.value));
+                  if (sel) setUploadedDoc(sel);
+                }}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-medium bg-slate-50 focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              >
+                {userDocs.map(d => (
+                  <option key={d.id} value={d.id}>
+                    [{d.file_type}] {d.filename} — {d.competency_tag} ({d.chunk_count} chunks)
+                  </option>
+                ))}
+              </select>
             </div>
           )}
         </div>
@@ -461,6 +556,13 @@ const QuizGenerator = () => {
                   />
                 )}
               </div>
+
+              {genError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start space-x-2">
+                  <XCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{genError}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -470,7 +572,7 @@ const QuizGenerator = () => {
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow transition flex items-center justify-center space-x-2 disabled:opacity-50"
           >
             {generating ? (
-              <span>Generating AI MCQs...</span>
+              <span>Generating Grounded AI MCQs...</span>
             ) : (
               <>
                 <Sparkles className="h-4 w-4" />

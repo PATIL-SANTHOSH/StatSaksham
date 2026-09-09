@@ -1,5 +1,6 @@
 import os
 import shutil
+import re
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -36,19 +37,54 @@ async def upload_document(
     filename = file.filename or "uploaded_doc.txt"
     file_ext = os.path.splitext(filename)[1].lower()
     
-    # Save file
-    saved_filename = f"{employee_id}_{int(datetime.now().timestamp())}_{filename}"
+    # Supported file extensions
+    allowed_exts = {".pdf", ".pptx", ".ppt", ".docx", ".doc", ".txt", ".md", ".csv"}
+    if file_ext not in allowed_exts:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format '{file_ext}'. Supported formats: PDF, PPTX, DOCX, TXT."
+        )
+
+    # Save file safely
+    safe_filename = re.sub(r'[^a-zA-Z0-9_.-]', '_', filename)
+    saved_filename = f"{employee_id.upper()}_{int(datetime.now().timestamp())}_{safe_filename}"
     file_path = os.path.join(upload_dir, saved_filename)
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
     file_size_kb = round(os.path.getsize(file_path) / 1024.0, 2)
     doc_title = title if title else os.path.splitext(filename)[0]
 
-    # Extract and chunk text via RAGEngine
-    raw_text = rag_engine.extract_text(file_path, file_ext)
-    chunks_data = rag_engine.chunk_text(raw_text, chunk_size=600, overlap=100)
+    # Extract structured page blocks
+    try:
+        pages = rag_engine.extract_document(file_path, filename)
+    except ValueError as val_err:
+        # Clean up file on extraction failure
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+        raise HTTPException(status_code=400, detail=str(val_err))
+    except Exception as err:
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=f"Extraction error: {str(err)}")
+
+    if not pages:
+        raise HTTPException(status_code=400, detail="No readable text could be extracted from this document.")
+
+    # Chunk text preserving page/slide metadata
+    chunks_data = rag_engine.chunk_document_pages(pages)
+    if not chunks_data:
+        raise HTTPException(status_code=400, detail="Unable to generate semantic chunks from the extracted text.")
 
     # Save QuizDocument
     doc = QuizDocument(
@@ -87,6 +123,66 @@ def list_user_documents(employee_id: str, db: Session = Depends(get_db)):
         QuizDocument.uploaded_by == employee_id.upper()
     ).order_by(QuizDocument.uploaded_at.desc()).all()
     return docs
+
+@router.get("/documents/{document_id}/status")
+def get_document_status(document_id: int, db: Session = Depends(get_db)):
+    doc = db.query(QuizDocument).filter(QuizDocument.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
+    
+    chunks_count = db.query(QuizChunk).filter(QuizChunk.document_id == document_id).count()
+    return {
+        "document_id": doc.id,
+        "filename": doc.filename,
+        "file_type": doc.file_type,
+        "status": "ready" if chunks_count > 0 else "empty",
+        "chunks": chunks_count,
+        "uploaded_at": doc.uploaded_at,
+        "competency_tag": doc.competency_tag
+    }
+
+@router.post("/search")
+def search_document_rag(
+    document_id: int = Query(...),
+    query: str = Query(...),
+    top_k: int = Query(4),
+    db: Session = Depends(get_db)
+):
+    doc = db.query(QuizDocument).filter(QuizDocument.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
+    
+    chunks = db.query(QuizChunk).filter(QuizChunk.document_id == document_id).order_by(QuizChunk.chunk_index).all()
+    if not chunks:
+        return {"query": query, "document": doc.filename, "results": []}
+
+    chunk_dicts = [
+        {
+            "id": c.id,
+            "chunk_index": c.chunk_index,
+            "content": c.content,
+            "token_count": c.token_count,
+            "embedding_json": c.embedding_json
+        }
+        for c in chunks
+    ]
+    
+    results = rag_engine.similarity_search(query, chunk_dicts, top_k=top_k)
+    return {
+        "query": query,
+        "document": doc.filename,
+        "total_chunks": len(chunks),
+        "top_k": top_k,
+        "results": [
+            {
+                "chunk_index": r["chunk_index"],
+                "similarity_score": r.get("similarity_score", 0.0),
+                "token_count": r.get("token_count", 0),
+                "excerpt": r["content"][:300] + "..." if len(r["content"]) > 300 else r["content"]
+            }
+            for r in results
+        ]
+    }
 
 @router.post("/generate", response_model=List[QuizQuestionResponse])
 def generate_quiz(

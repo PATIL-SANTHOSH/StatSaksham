@@ -1,131 +1,152 @@
 import os
 import re
 import math
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 import numpy as np
-from pypdf import PdfReader
-from pptx import Presentation
 from app.ai.ollama_client import ollama_client
+from app.ai.document_extractor import document_extractor, clean_text
 
 class RAGEngine:
     def __init__(self):
         pass
 
+    def extract_document(self, file_path: str, filename: str) -> List[Dict[str, Any]]:
+        """
+        Extract structured page/slide text blocks using the DocumentExtractor.
+        Returns: List[{"page": int, "text": str, "source": str, "type": str}]
+        """
+        return document_extractor.extract_document_pages(file_path, filename)
+
     def extract_text(self, file_path: str, file_type: str) -> str:
         """
-        Extract raw text from PDF, PPTX, TXT or DOCX files.
+        Backward-compatible helper returning unified text.
         """
-        text = ""
-        file_ext = file_type.lower().replace(".", "")
-
+        filename = os.path.basename(file_path)
         try:
-            if file_ext == "pdf":
-                reader = PdfReader(file_path)
-                for page_idx, page in enumerate(reader.pages):
-                    page_text = page.extract_text() or ""
-                    if page_text.strip():
-                        text += f"\n--- Page {page_idx + 1} ---\n" + page_text
-
-            elif file_ext in ["pptx", "ppt"]:
-                prs = Presentation(file_path)
-                for slide_idx, slide in enumerate(prs.slides):
-                    slide_texts = []
-                    for shape in slide.shapes:
-                        if hasattr(shape, "text") and shape.text.strip():
-                            slide_texts.append(shape.text.strip())
-                    if slide_texts:
-                        text += f"\n--- Slide {slide_idx + 1} ---\n" + "\n".join(slide_texts)
-
-            elif file_ext in ["txt", "md", "csv"]:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    text = f.read()
-
-            else:
-                # Fallback binary reader
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    text = f.read()
-
+            pages = self.extract_document(file_path, filename)
+            blocks = []
+            for p in pages:
+                label = f"--- Page {p['page']} ---" if p.get('type') == 'page' else f"--- Slide {p['page']} ---"
+                blocks.append(f"\n{label}\n{p['text']}")
+            return clean_text("\n".join(blocks))
         except Exception as e:
             print(f"[RAGEngine] Error extracting text from {file_path}: {e}")
-            text = f"Error extracting document text: {str(e)}"
+            return f"Error extracting document text: {str(e)}"
 
-        return text.strip()
+    def chunk_document_pages(
+        self, 
+        pages: List[Dict[str, Any]], 
+        chunk_size_words: int = 180, 
+        overlap_words: int = 35
+    ) -> List[Dict[str, Any]]:
+        """
+        Chunk structured page blocks while preserving page/slide numbering.
+        """
+        if not pages:
+            return []
+
+        chunks = []
+        chunk_idx = 0
+
+        for p in pages:
+            page_num = p.get("page", 1)
+            source_name = p.get("source", "document")
+            page_type = p.get("type", "page")
+            text = clean_text(p.get("text", ""))
+            
+            if not text:
+                continue
+
+            words = text.split()
+            if len(words) <= chunk_size_words:
+                # Single chunk for this page
+                chunks.append({
+                    "chunk_index": chunk_idx,
+                    "page": page_num,
+                    "type": page_type,
+                    "source": source_name,
+                    "content": text,
+                    "token_count": len(words)
+                })
+                chunk_idx += 1
+            else:
+                # Split with overlap
+                step = max(1, chunk_size_words - overlap_words)
+                for start_idx in range(0, len(words), step):
+                    chunk_words = words[start_idx:start_idx + chunk_size_words]
+                    chunk_str = " ".join(chunk_words)
+                    chunks.append({
+                        "chunk_index": chunk_idx,
+                        "page": page_num,
+                        "type": page_type,
+                        "source": source_name,
+                        "content": chunk_str,
+                        "token_count": len(chunk_words)
+                    })
+                    chunk_idx += 1
+                    if start_idx + chunk_size_words >= len(words):
+                        break
+
+        return chunks
 
     def chunk_text(self, text: str, chunk_size: int = 600, overlap: int = 100) -> List[Dict[str, Any]]:
         """
-        Split text into overlapping semantic chunks.
+        Standard chunking fallback for raw text input.
         """
-        if not text:
+        if not text or not text.strip():
             return []
 
-        # Normalize whitespace
-        text = re.sub(r'[ \t]+', ' ', text)
-        lines = text.split('\n')
+        cleaned = clean_text(text)
+        words = cleaned.split()
+        chunk_size_words = max(50, chunk_size // 5)
+        overlap_words = max(10, overlap // 5)
+        step = max(1, chunk_size_words - overlap_words)
         
         chunks = []
-        current_chunk = ""
         chunk_idx = 0
-
-        for line in lines:
-            line_str = line.strip()
-            if not line_str:
-                continue
-
-            if len(current_chunk) + len(line_str) <= chunk_size:
-                current_chunk += (" " if current_chunk else "") + line_str
-            else:
-                if current_chunk:
-                    chunks.append({
-                        "chunk_index": chunk_idx,
-                        "content": current_chunk.strip(),
-                        "token_count": len(current_chunk.split())
-                    })
-                    chunk_idx += 1
-                    # Overlap
-                    overlap_text = current_chunk[-overlap:] if len(current_chunk) > overlap else ""
-                    current_chunk = overlap_text + " " + line_str
-                else:
-                    # Single line longer than chunk_size
-                    chunks.append({
-                        "chunk_index": chunk_idx,
-                        "content": line_str[:chunk_size],
-                        "token_count": len(line_str[:chunk_size].split())
-                    })
-                    chunk_idx += 1
-                    current_chunk = line_str[chunk_size - overlap:]
-
-        if current_chunk.strip():
+        for start_idx in range(0, len(words), step):
+            chunk_words = words[start_idx:start_idx + chunk_size_words]
             chunks.append({
                 "chunk_index": chunk_idx,
-                "content": current_chunk.strip(),
-                "token_count": len(current_chunk.split())
+                "page": 1,
+                "type": "page",
+                "source": "manual_text",
+                "content": " ".join(chunk_words),
+                "token_count": len(chunk_words)
             })
+            chunk_idx += 1
+            if start_idx + chunk_size_words >= len(words):
+                break
 
         return chunks
 
     def compute_embedding(self, text: str) -> List[float]:
         """
-        Compute embedding using Ollama nomic-embed-text if available,
-        or deterministic pseudo-embedding vector for fallback.
+        Compute embedding using Ollama nomic-embed-text (768-dim),
+        or deterministic 64-dim normalized term-frequency fallback vector if Ollama is offline.
         """
         if ollama_client.is_available():
             emb = ollama_client.get_embedding(text)
-            if emb:
+            if emb and len(emb) > 0:
                 return emb
 
-        # Deterministic lightweight 64-dim embedding based on character and term hashes
+        # Deterministic 64-dim normalized term-frequency vector fallback
         vector = [0.0] * 64
         words = re.findall(r'\w+', text.lower())
         for w in words:
             h = hash(w) % 64
             vector[h] += 1.0
-        # Normalize vector
         norm = math.sqrt(sum(x*x for x in vector)) or 1.0
         return [round(x / norm, 6) for x in vector]
 
-    def similarity_search(self, query: str, chunks: List[Dict[str, Any]], top_k: int = 3) -> List[Dict[str, Any]]:
+    def similarity_search(
+        self, 
+        query: str, 
+        chunks: List[Dict[str, Any]], 
+        top_k: int = 4
+    ) -> List[Dict[str, Any]]:
         """
-        Perform cosine similarity search on chunk embeddings.
+        Perform fast cosine similarity vector search over candidate chunks.
         """
         if not chunks:
             return []
@@ -136,22 +157,25 @@ class RAGEngine:
 
         scored_chunks = []
         for c in chunks:
-            emb = c.get("embedding")
+            emb = c.get("embedding") or c.get("embedding_json")
             if not emb:
-                emb = self.compute_embedding(c["content"])
+                emb = self.compute_embedding(c.get("content", ""))
+            
             c_vec = np.array(emb, dtype=float)
             c_norm = np.linalg.norm(c_vec) or 1.0
-            
-            # Check dimensions match
+
             if len(q_vec) == len(c_vec):
                 sim = float(np.dot(q_vec, c_vec) / (q_norm * c_norm))
             else:
-                # Text overlap score fallback
+                # Fallback term overlap if dimensions differ
                 q_words = set(query.lower().split())
-                c_words = set(c["content"].lower().split())
+                c_words = set(c.get("content", "").lower().split())
                 sim = len(q_words.intersection(c_words)) / max(1, len(q_words))
 
-            scored_chunks.append((sim, c))
+            # Clone chunk dict and attach score
+            chunk_copy = dict(c)
+            chunk_copy["similarity_score"] = round(sim, 4)
+            scored_chunks.append((sim, chunk_copy))
 
         scored_chunks.sort(key=lambda x: x[0], reverse=True)
         return [item[1] for item in scored_chunks[:top_k]]

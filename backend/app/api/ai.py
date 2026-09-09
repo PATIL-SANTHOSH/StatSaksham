@@ -23,6 +23,11 @@ def get_ai_status():
         "message": f"Local Ollama LLM ({active_model}) operational" if ollama_ready else "AI service operational using MoSPI domain knowledge base."
     }
 
+@router.get("/health")
+def get_ai_health():
+    health = ollama_client.get_health()
+    return health
+
 @router.post("/chat", response_model=ChatResponse)
 def chat_with_assistant(
     payload: ChatRequest,

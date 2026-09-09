@@ -32,14 +32,14 @@ const AIAssistant = () => {
     if (!user) return;
     const fetchStatusAndDocs = async () => {
       try {
-        const [statusRes, docsRes] = await Promise.all([
-          aiAPI.getStatus(),
+        const [healthRes, docsRes] = await Promise.all([
+          aiAPI.getHealth(),
           quizAPI.getDocuments(user.employee_id)
         ]);
-        setAiStatus(statusRes.data);
+        setAiStatus(healthRes.data);
         setUserDocs(docsRes.data);
       } catch (err) {
-        console.error('Error loading AI status:', err);
+        console.error('Error loading AI health:', err);
       }
     };
     fetchStatusAndDocs();
@@ -51,7 +51,7 @@ const AIAssistant = () => {
 
   const handleSend = async (customText = null) => {
     const text = customText || inputMessage;
-    if (!text.trim()) return;
+    if (!text || !text.trim()) return;
 
     const userMsg = { role: 'user', content: text };
     setMessages((prev) => [...prev, userMsg]);
@@ -66,34 +66,41 @@ const AIAssistant = () => {
       };
 
       const res = await aiAPI.chat(payload);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: res.data.message,
-          sources: res.data.sources,
-          model: res.data.model_used
-        }
-      ]);
+      if (res.data && res.data.message) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: res.data.message,
+            sources: res.data.sources || [],
+            model: res.data.model_used || 'StatSaksham Intelligence'
+          }
+        ]);
+      } else {
+        throw new Error('Empty response from AI assistant');
+      }
     } catch (err) {
+      console.error('AI Chat Error:', err);
+      const errDetail = err.response?.data?.detail || 'AI service is currently busy or re-indexing. Please check whether Ollama is active or try again.';
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: 'Sorry, I encountered an issue processing your request. Please try again.',
+          content: errDetail,
           sources: []
         }
       ]);
     } finally {
+      // Guarantee loading is always reset to false!
       setLoading(false);
     }
   };
 
   const samplePrompts = [
     "What are my biggest skill gaps?",
-    "Why was this course recommended?",
-    "Explain my competency score.",
-    "Help me prepare for my assessment."
+    "Explain Gross Value Added (GVA) in National Accounts.",
+    "How do I use Python for survey microdata?",
+    "Why was this iGOT course recommended for me?"
   ];
 
   return (
@@ -102,13 +109,15 @@ const AIAssistant = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">StatSaksham AI Assistant</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Your personalized learning companion</p>
+          <p className="text-xs text-slate-500 mt-0.5">Your official MoSPI statistical learning and capacity building companion</p>
         </div>
 
         {aiStatus && (
           <div className="flex items-center space-x-2 text-[11px] bg-white px-3 py-1.5 rounded-xl border border-slate-200/90 shadow-2xs font-semibold">
-            <span className={`h-2 w-2 rounded-full ${aiStatus.is_ollama_available ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-            <span className="text-slate-600">Engine: <strong>{aiStatus.is_ollama_available ? 'Ollama Qwen3.5' : 'Heuristic Engine'}</strong></span>
+            <span className={`h-2 w-2 rounded-full ${aiStatus.ollama_connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+            <span className="text-slate-600">
+              Engine: <strong>{aiStatus.ollama_connected ? `Ollama (${aiStatus.active_model})` : 'MoSPI Domain Engine'}</strong>
+            </span>
           </div>
         )}
       </div>
@@ -118,17 +127,17 @@ const AIAssistant = () => {
         <div className="bg-white rounded-2xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between text-xs">
           <div className="flex items-center space-x-2 text-slate-700">
             <FileText className="h-4 w-4 text-blue-600" />
-            <span className="font-bold">Ground with Uploaded Document:</span>
+            <span className="font-bold">Ground AI with Uploaded Material:</span>
           </div>
           <select
             value={selectedDocId || ''}
             onChange={(e) => setSelectedDocId(e.target.value || null)}
-            className="px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-600 focus:outline-none bg-slate-50"
+            className="px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-600 focus:outline-none bg-slate-50 max-w-xs truncate"
           >
-            <option value="">General Knowledge (All MoSPI Domains)</option>
+            <option value="">General MoSPI Domain Knowledge Base</option>
             {userDocs.map((doc) => (
               <option key={doc.id} value={doc.id}>
-                {doc.filename} ({doc.chunk_count} Chunks)
+                [{doc.file_type}] {doc.filename} ({doc.chunk_count} Chunks)
               </option>
             ))}
           </select>

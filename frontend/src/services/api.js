@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 18000, // 18 seconds request timeout
+  timeout: 60000, // 60 seconds request timeout for local LLM & RAG generation
   headers: {
     'Content-Type': 'application/json',
   },
@@ -88,6 +88,8 @@ export const quizAPI = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   getDocuments: (empId) => api.get(`/quiz/documents/${empId}`),
+  getDocumentStatus: (docId) => api.get(`/quiz/documents/${docId}/status`),
+  searchRAG: (docId, query, topK = 4) => api.post('/quiz/search', null, { params: { document_id: docId, query, top_k: topK } }),
   generateQuiz: (data) => api.post('/quiz/generate', data),
   submitQuiz: (data) => api.post('/quiz/submit', data),
 };
@@ -95,6 +97,7 @@ export const quizAPI = {
 // AI Learning Assistant API
 export const aiAPI = {
   getStatus: () => api.get('/ai/status'),
+  getHealth: () => api.get('/ai/health'),
   chat: (data) => api.post('/ai/chat', data),
   getHistory: (empId) => api.get(`/ai/history/${empId}`),
 };

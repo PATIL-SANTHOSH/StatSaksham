@@ -57,14 +57,30 @@ class LearningAssistantService:
         # Document context lookup for RAG
         doc_context = ""
         sources = []
+        doc_filename = None
+
         if document_id:
             doc = self.db.query(QuizDocument).filter(QuizDocument.id == document_id).first()
             if doc:
-                chunks = self.db.query(QuizChunk).filter(QuizChunk.document_id == document_id).all()
-                chunk_dicts = [{"content": c.content, "chunk_index": c.chunk_index} for c in chunks]
-                top_chunks = rag_engine.similarity_search(message, chunk_dicts, top_k=3)
-                doc_context = "\n\n".join([f"Excerpt: {c['content']}" for c in top_chunks])
-                sources.append(f"Document: {doc.filename}")
+                doc_filename = doc.filename
+                chunks = self.db.query(QuizChunk).filter(QuizChunk.document_id == document_id).order_by(QuizChunk.chunk_index).all()
+                if chunks:
+                    chunk_dicts = [
+                        {
+                            "content": c.content, 
+                            "chunk_index": c.chunk_index,
+                            "embedding_json": c.embedding_json
+                        } 
+                        for c in chunks
+                    ]
+                    top_chunks = rag_engine.similarity_search(message, chunk_dicts, top_k=4)
+                    
+                    context_pieces = []
+                    for c in top_chunks:
+                        context_pieces.append(f"[Excerpt {c['chunk_index'] + 1}]:\n{c['content']}")
+                        sources.append(f"Document: {doc.filename} (Section {c['chunk_index'] + 1})")
+                    
+                    doc_context = "\n\n".join(context_pieces)
 
         # Attempt Ollama LLM response
         assistant_reply = None
@@ -72,21 +88,37 @@ class LearningAssistantService:
 
         if ollama_client.is_available():
             active_model = ollama_client.get_active_model()
-            system_prompt = (
-                f"You are StatSaksham AI, an intelligent mentor for officers in India's Official Statistical System (MoSPI).\n"
-                f"Officer: {emp_name}, {job_role} at {dept}. Assignment: {assignment}.\n"
-                f"Provide concise, structured guidance grounded in Indian statistical methodologies "
-                f"(SNA 2008, NSS Survey Design, CPI/IIP, SDG Framework, Python/R, and iGOT Karmayogi capacity building)."
-            )
+            
+            if doc_context and doc_filename:
+                # Grounded RAG System Prompt
+                system_prompt = (
+                    f"You are the AI Statistical Learning Assistant for India's Ministry of Statistics (MoSPI).\n"
+                    f"You are answering a question from {emp_name} ({job_role}, {dept}).\n"
+                    f"STRICT INSTRUCTIONS FOR UPLOADED MATERIAL:\n"
+                    f"1. Answer the question using ONLY the provided document excerpts from '{doc_filename}'.\n"
+                    f"2. Cite the source document clearly in your explanation.\n"
+                    f"3. If the provided excerpts do NOT contain enough information to answer the question, explicitly state: "
+                    f"'The uploaded material ({doc_filename}) does not contain sufficient information to answer this question.'\n"
+                    f"4. Do NOT hallucinate external facts when answering from uploaded material."
+                )
+                prompt = (
+                    f"DOCUMENT EXCERPTS ({doc_filename}):\n\"\"\"\n{doc_context}\n\"\"\"\n\n"
+                    f"OFFICER'S QUESTION:\n{message}\n\n"
+                    f"GROUNDED ANSWER:"
+                )
+            else:
+                # General Statistical Assistant Prompt
+                system_prompt = (
+                    f"You are StatSaksham AI, an intelligent capacity-building mentor for officers in India's Official Statistical System (MoSPI).\n"
+                    f"Officer: {emp_name}, {job_role} at {dept}. Current Assignment: {assignment}.\n"
+                    f"Provide structured, authoritative guidance on Indian statistical methodologies "
+                    f"(SNA 2008 National Accounts, NSS Survey & Sampling, CPI/IIP, SDG NIF, Python/R, and iGOT Karmayogi capacity building)."
+                )
+                context_block = f"\nFOCUS COMPETENCY: {context_competency}\n" if context_competency else ""
+                prompt = f"{context_block}\nOfficer's Question:\n{message}"
+                sources.append("StatSaksham MoSPI Official Statistical Knowledge Base")
 
-            context_block = ""
-            if doc_context:
-                context_block = f"\n\nDOCUMENT CONTEXT:\n{doc_context}\n"
-            if context_competency:
-                context_block += f"\nFOCUS COMPETENCY: {context_competency}\n"
-
-            prompt = f"{context_block}\nOfficer's Question:\n{message}"
-            llm_res = ollama_client.generate(prompt, system=system_prompt, model=active_model)
+            llm_res = ollama_client.generate(prompt, system=system_prompt, model=active_model, max_tokens=700)
             if llm_res and len(llm_res.strip()) > 10:
                 assistant_reply = llm_res.strip()
                 model_used = f"Ollama ({active_model})"
@@ -100,15 +132,17 @@ class LearningAssistantService:
                 document_context=doc_context
             )
             assistant_reply = fb["message"]
-            sources.extend(fb["sources"])
-            model_used = fb["model_used"]
+            if not sources:
+                sources.extend(fb.get("sources", []))
+            model_used = fb.get("model_used", "StatSaksham Intelligence Engine")
 
         # Save assistant message
+        unique_sources = list(dict.fromkeys(sources))
         ast_msg = AIMessage(
             conversation_id=conv.id,
             role="assistant",
             content=assistant_reply,
-            sources_json={"sources": sources}
+            sources_json={"sources": unique_sources}
         )
         self.db.add(ast_msg)
         conv.updated_at = datetime.now(timezone.utc)
@@ -118,7 +152,7 @@ class LearningAssistantService:
             conversation_id=conv.id,
             message=assistant_reply,
             role="assistant",
-            sources=list(set(sources)),
-            model_used=model_used,
+            sources=unique_sources,
+            model_used=model_used or "StatSaksham Intelligence Engine",
             created_at=ast_msg.created_at
         )
