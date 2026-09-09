@@ -13,8 +13,38 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post("/login", response_model=Token)
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     employee_id = req.employee_id.strip().upper()
-    user = db.query(User).filter(User.employee_id == employee_id).first()
-    
+    user = None
+
+    try:
+        user = db.query(User).filter(User.employee_id == employee_id).first()
+    except Exception as e:
+        # Table missing or uninitialized DB -> Auto-create & Auto-seed
+        print(f"[Auth Recovery] Database query failed: {e}. Auto-initializing tables and seeding...")
+        try:
+            from app.database.session import engine, Base
+            import app.models
+            from seed_data import seed_database
+            Base.metadata.create_all(bind=engine)
+            seed_database()
+            user = db.query(User).filter(User.employee_id == employee_id).first()
+        except Exception as seed_err:
+            print(f"[Auth Seeding Error] {seed_err}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Database initialization error: {str(seed_err)}"
+            )
+
+    # If DB exists but is empty, auto-seed and reload
+    if not user:
+        try:
+            if db.query(User).count() == 0:
+                print("[Auth] Database has 0 users. Auto-seeding initial dataset...")
+                from seed_data import seed_database
+                seed_database()
+                user = db.query(User).filter(User.employee_id == employee_id).first()
+        except Exception:
+            pass
+
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -25,8 +55,11 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Account is disabled")
 
     # Update last login
-    user.last_login = datetime.now(timezone.utc)
-    db.commit()
+    try:
+        user.last_login = datetime.now(timezone.utc)
+        db.commit()
+    except Exception:
+        db.rollback()
 
     # Get employee details
     emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
