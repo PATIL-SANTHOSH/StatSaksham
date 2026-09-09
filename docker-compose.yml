@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: statsaksham_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://statsaksham:statsaksham123@postgres:5432/statsaksham_db
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    depends_on:
+      - postgres
+    volumes:
+      - ./uploads:/app/uploads
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: statsaksham_postgres
+    environment:
+      POSTGRES_USER: statsaksham
+      POSTGRES_PASSWORD: statsaksham123
+      POSTGRES_DB: statsaksham_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: statsaksham_frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

@@ -1,0 +1,29 @@
+code,name,category,domain,description,max_level
+STAT_SURVEY,Survey Design,Statistical,Survey & Sampling,"Schedules, questionnaire design, multi-stage stratification and pilot testing.",5
+STAT_SAMPLING,Sampling Techniques,Statistical,Survey & Sampling,"Stratified sampling, cluster sampling, PPS, FSU selection, and multiplier calculations.",5
+STAT_NAT_ACC,National Accounts,Statistical,Macroeconomic Statistics,"System of National Accounts (SNA 2008), GDP estimation, GVA, and supply-use tables.",5
+STAT_PRICE,Price Statistics,Statistical,Macroeconomic Statistics,"CPI Rural/Urban/Combined, WPI indices, Laspeyres/Paasche formula, and price collection.",5
+STAT_LABOUR,Labour Statistics,Statistical,Socio-Economic Statistics,"Periodic Labour Force Survey (PLFS), LFPR, WPR, and unemployment rates.",5
+STAT_AGRI,Agricultural Statistics,Statistical,Sectoral Statistics,"Crop estimation surveys, land use statistics, and agricultural input cost indices.",5
+STAT_IND,Industrial Statistics,Statistical,Sectoral Statistics,"Annual Survey of Industries (ASI), Index of Industrial Production (IIP), and NIC codes.",5
+STAT_SDG,SDG Indicators,Statistical,Global & National Frameworks,National Indicator Framework (NIF) for 17 Sustainable Development Goals.,5
+STAT_META,Metadata Standards,Statistical,Data Governance,"SDMX standards, National Metadata Repository, and data classification schemas.",5
+STAT_QUALITY,Data Quality Frameworks,Statistical,Quality Assurance,"NQAF guidelines, survey validation, error auditing, and imputation techniques.",5
+TECH_PYTHON,Python for Data Analysis,Technical,Computing & Scripting,"Pandas, NumPy, automated ETL pipelines, and survey microdata processing.",5
+TECH_R,R Programming,Technical,Computing & Scripting,"Survey package in R, econometric modeling, time-series, and ggplot2 visualizations.",5
+TECH_SQL,SQL & Database Queries,Technical,Database Management,"Relational query design, indexing, large dataset joins, and PostgreSQL/Oracle.",5
+TECH_STATA,Stata Econometrics,Technical,Statistical Software,"Panel data regression, instrumental variables, and survey weighting analysis.",5
+TECH_SPSS,SPSS Statistics,Technical,Statistical Software,"Descriptive statistics, ANOVA, cross-tabulations, and factor analysis.",5
+TECH_SAS,SAS Analytics,Technical,Statistical Software,"Enterprise SAS programming, macro development, and large batch transformations.",5
+TECH_GIS,GIS & Spatial Statistics,Technical,Geospatial,"QGIS, spatial autocorrelation, choropleth mapping, and Urban Frame Survey digitization.",5
+TECH_DATAVIZ,Data Visualization & Dashboards,Technical,Analytics & Reporting,"Power BI, Tableau, interactive web charts, and official statistical infographics.",5
+TECH_AIML,AI & Machine Learning in Statistics,Technical,Emerging Technologies,"Automated data validation, predictive imputation, NLP for occupation classification.",5
+TECH_CLOUD,Cloud Computing for Government,Technical,Infrastructure,"Government Community Cloud (GCC), containerized statistical workflows.",5
+TECH_APIS,APIs & Data Integration,Technical,Interoperability,"REST APIs, Open API specifications, automated microdata exchange protocols.",5
+TECH_OPENDATA,Open Data Standards,Technical,Dissemination,"Data.gov.in publishing standards, machine-readable formats (JSON/CSV), FAIR principles.",5
+GOV_CYBER,Cybersecurity & Data Protection,Digital Governance,Security & Compliance,"CERT-In guidelines, server hardening, role-based access, and secure data storage.",5
+GOV_PRIVACY,Data Privacy & Anonymization,Digital Governance,Compliance,"DPDP Act compliance, k-anonymity, differential privacy, and microdata de-identification.",5
+GOV_DPI,Digital Public Infrastructure,Digital Governance,Governance,"India Stack, Aadhaar e-Sign, DigiLocker integration, and public digital platforms.",5
+BEH_LEAD,Leadership & Team Management,Behavioural / Managerial,Management,"Field team supervision, conflict resolution, and capacity building.",5
+BEH_COMM,Official Communication & Reporting,Behavioural / Managerial,Communication,"Statistical report drafting, executive briefs, parliamentary replies, and dissemination.",5
+BEH_ETHICS,Public Service Ethics & Integrity,Behavioural / Managerial,Ethics,"Code of Conduct, objectivity in official statistics, and confidentiality mandates.",5

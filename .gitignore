@@ -1,0 +1,61 @@
+# ============================================================
+# STATSAKSHAM — Comprehensive .gitignore
+# ============================================================
+
+# 1. Environment & Secrets (CRITICAL: Never commit passwords/keys)
+.env
+.env.*
+*.env
+backend/.env
+!.env.example
+!backend/.env.example
+
+# 2. Python & Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.mypy_cache/
+
+# 3. Node.js & Frontend Build Artifacts
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# 4. Databases & SQLite Files
+*.db
+*.sqlite
+*.sqlite3
+statsaksham.db
+backend/statsaksham.db
+
+# 5. User Uploads & Temporary Media
+uploads/
+uploads/*
+!uploads/.gitkeep
+
+# 6. Operating System & Editor Files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 7. Diagnostic & Scratch Files
+diagnose_ai.py
+backend/diagnose_ai.py
