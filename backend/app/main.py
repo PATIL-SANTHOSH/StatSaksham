@@ -45,6 +45,26 @@ app.include_router(quiz_router, prefix=settings.API_V1_STR)
 app.include_router(ai_router, prefix=settings.API_V1_STR)
 app.include_router(admin_router, prefix=settings.API_V1_STR)
 
+@app.on_event("startup")
+def on_startup():
+    try:
+        from app.database.session import engine, Base, SessionLocal
+        from app.models.user import User
+        Base.metadata.create_all(bind=engine)
+        db = SessionLocal()
+        try:
+            count = db.query(User).count()
+            if count == 0:
+                print("[Database] Empty database detected. Auto-seeding initial dataset...")
+                from seed_data import seed_database
+                seed_database()
+            else:
+                print(f"[Database] Connected successfully ({count} users found).")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[Database Startup Notice] {e}")
+
 @app.get("/")
 def root():
     return {
